@@ -41,6 +41,7 @@ from termcolor import colored, cprint
 import math as m
 from tqdm import tqdm
 from Misc.TFSpatialTransformer import *
+from random import randrange
 import tensorflow as tf
 # tf.disable_v2_behavior()
 # from tensorflow.keras.optimizers import SGD
@@ -65,7 +66,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
     LabelBatch - Batch of one-hot encoded labels 
     """
     if (ModelType  == 'Sup'):
-        print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        # print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
         I1Batch = []
         LabelBatch = []
 
@@ -100,9 +101,9 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
             
         return I1Batch, LabelBatch
     else:
-        print("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
+        # print("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
         StackedBatch = []
-        PABatch =[]
+        IABatch =[]
         CABatch =[]
         PBBatch =[]
 
@@ -150,11 +151,11 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
             stacked_img = np.dstack((A_normal, B_normal))
 
             StackedBatch.append(stacked_img)
-            PABatch.append(np.float32(A_normal.reshape(128,128,1)))
+            IABatch.append(np.float32(gray.reshape(320,240,1)))
             CABatch.append(np.float32(corners_A))
             PBBatch.append(np.float32(B_normal.reshape(128,128,1)))
 
-        return StackedBatch, PABatch, CABatch, PBBatch
+        return StackedBatch, IABatch, CABatch, PBBatch
 
 def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile):
     """
@@ -168,7 +169,7 @@ def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile)
         print('Loading latest checkpoint with the name ' + LatestFile)              
 
     
-def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
+def TrainOperation(ImgPH, LabelPH,ImageAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
                    NumEpochs, MiniBatchSize, SaveCheckPoint, CheckPointPath,
                    DivTrain, LatestFile, BasePath, LogsPath, ModelType):
     """
@@ -212,10 +213,10 @@ def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, T
 
     else:
         print("Unsupervised")
-        pred_PB,PB,kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias = UnsupervisedModel(ImgPH,PatchAPH,CornerAPH, PatchBPH,ImageSize, MiniBatchSize)
+        pred_PB,PB,kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias = UnsupervisedModel(ImgPH,ImageAPH,CornerAPH, PatchBPH,ImageSize, MiniBatchSize)
 
         with tf.name_scope('Loss'):
-            loss = tf.reduce_mean(tf.abs(pred_PB - PB))
+            loss = 255 * tf.reduce_mean(tf.abs(pred_PB - PB))
 
 
         with tf.name_scope('Adam'):
@@ -232,7 +233,7 @@ def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, T
     # Tensorboard
     # Create a summary to monitor loss tensor
     tf.summary.scalar('learning_rate', learning_rate)
-    # tf.summary.scalar('LossEveryIter', loss)
+    tf.summary.scalar('LossEveryIter', loss)
     tf.summary.histogram('kernel_c1',kernel_c1)
     tf.summary.histogram('kernel_c2',kernel_c2) 
     tf.summary.histogram('kernel_c3',kernel_c3)
@@ -244,19 +245,20 @@ def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, T
         tf.summary.histogram("gradients/" + variable.name, tf.norm(gradient))
         tf.summary.histogram("variables/" + variable.name, tf.norm(variable))
 
-    EpochLossPH = tf.placeholder(tf.float32, shape=None)
-    loss_summary = tf.summary.scalar('LossEveryIter', loss)
-    epoch_loss_summary = tf.summary.scalar('LossPerEpoch', EpochLossPH)
-    # tf.summary.image('Anything you want', AnyImg)
+    # EpochLossPH = tf.placeholder(tf.float32, shape=None)
+    # loss_summary = tf.summary.scalar('LossEveryIter', loss)
+    # epoch_loss_summary = tf.summary.scalar('LossPerEpoch', EpochLossPH)
+    tf.summary.image('Pred_patchB', pred_PB)
+    tf.summary.image('PatchB', PB)
 
     # Merge all summaries into a single operation
-    MergedSummaryOP1 = tf.summary.merge([loss_summary])
-    MergedSummaryOP2 = tf.summary.merge([epoch_loss_summary])
-    # MergedSummaryOP = tf.summary.merge_all()
+    # MergedSummaryOP1 = tf.summary.merge([loss_summary])
+    # MergedSummaryOP2 = tf.summary.merge([epoch_loss_summary])
+    MergedSummaryOP = tf.summary.merge_all()
 
     # Setup Saver
     Saver = tf.train.Saver(max_to_keep=10000)
-    AccOverEpochs=np.array([0,0])
+    LossOverEpochs=np.array([0,0])
     with tf.Session() as sess:       
         if LatestFile is not None:
             Saver.restore(sess, CheckPointPath + LatestFile + '.ckpt')
@@ -281,10 +283,10 @@ def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, T
                     FeedDict = {ImgPH: ImgBatch, LabelPH: LabelBatch}
                     
                 else:
-                    StackedBatch, PABatch, CABatch, PBBatch = GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize,ModelType)
-                    FeedDict = {ImgPH: StackedBatch, PatchAPH:PABatch ,CornerAPH: CABatch, PatchBPH: PBBatch}
+                    StackedBatch, IABatch, CABatch, PBBatch = GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize,ModelType)
+                    FeedDict = {ImgPH: StackedBatch, ImageAPH:IABatch ,CornerAPH: CABatch, PatchBPH: PBBatch}
                     
-                _, LossThisBatch, Summary = sess.run([Optimizer, loss, MergedSummaryOP1], feed_dict=FeedDict)
+                _, LossThisBatch, Summary = sess.run([Optimizer, loss, MergedSummaryOP], feed_dict=FeedDict)
                 # Loss.append(LossThisBatch)
                 # epoch_loss = epoch_loss + LossThisBatch
                 # # Save checkpoint every some SaveCheckPoint's iterations
@@ -336,7 +338,7 @@ def main():
     """
     # Parse Command Line arguments
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('--BasePath', default='/home/akanksha/Downloads/Phase2', help='Base path of images, Default:/media/nitin/Research/Homing/SpectralCompression/COCO')
+    Parser.add_argument('--BasePath', default='/home/p_akanksha94/Git/CMSC733/apatel44_smakam_p1/Phase2', help='Base path of images, Default:/media/nitin/Research/Homing/SpectralCompression/COCO')
     Parser.add_argument('--ModelType', default='Unsup', help='Model type, Supervised or Unsupervised? Choose from Sup and Unsup, Default:Unsup')
     Parser.add_argument('--CheckPointPath', default='../Checkpoints/Unsup/', help='Path to save Checkpoints, Default: ../Checkpoints/')
     Parser.add_argument('--NumEpochs', type=int, default=50, help='Number of Epochs to Train for, Default:50')
@@ -373,12 +375,12 @@ def main():
     # Define PlaceHolder variables for Input and Predicted output
     ImgPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, ImageSize[0], ImageSize[1], ImageSize[2]))
     LabelPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, NumClasses)) # OneHOT labels
-    PatchAPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 128,128,1))
+    ImageAPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 320,240,1))
     CornerAPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 4,2))
     PatchBPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 128, 128,1))
     
     
-    TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
+    TrainOperation(ImgPH, LabelPH,ImageAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
                    NumEpochs, MiniBatchSize, SaveCheckPoint, CheckPointPath,
                    DivTrain, LatestFile, BasePath, LogsPath, ModelType)
         

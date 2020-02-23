@@ -144,8 +144,7 @@ def SupervisedModel(Img, ImageSize, MiniBatchSize):
     
     return prLogits, kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias
 
-    def UnsupervisedModel(Img,PA,CA, PB,ImageSize, MiniBatchSize):
-
+def UnsupervisedModel(Img,IA,CA, PB,ImageSize, MiniBatchSize):
     H4pt, kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias = SupervisedModel(Img, ImageSize, MiniBatchSize)
     C4A_pts = tf.reshape(CA,[MiniBatchSize,8])
    
@@ -154,8 +153,8 @@ def SupervisedModel(Img, ImageSize, MiniBatchSize):
     img_w = ImageSize[1]
     # Constants and variables used for spatial transformer
     M = np.array([[img_w/2.0, 0., img_w/2.0],
-                  [0., img_h/2.0, img_h/2.0],
-                  [0., 0., 1.]]).astype(np.float32)
+              [0., img_h/2.0, img_h/2.0],
+              [0., 0., 1.]]).astype(np.float32)
 
     M_tensor  = tf.constant(M, tf.float32)
     M_tile   = tf.tile(tf.expand_dims(M_tensor, [0]), [MiniBatchSize, 1,1])
@@ -174,11 +173,11 @@ def SupervisedModel(Img, ImageSize, MiniBatchSize):
     out_size = (img_h, img_w)
 
     
-    warped_images, _ = transformer(PA, H_mat, out_size)
+    warped_images, _ = transformer(IA, H_mat, out_size)
     # print(warped_images.get_shape())
     pred_PB = tf.reduce_mean(warped_images, 3)
 
     pred_PB = tf.reshape(pred_PB, [MiniBatchSize, 128, 128, 1])
 
 
-    return pred_PB,PB,kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias
+    return pred_PB, PB, kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias
