@@ -17,12 +17,14 @@ University of Maryland, College Park
 # skimage, do (apt install python-skimage)
 # termcolor, do (pip install termcolor)
 
-import tensorflow as tf
+# import tensorflow as tf
+import matplotlib
+matplotlib.use('Agg')
 import cv2
 import sys
 import os
 import glob
-import Misc.ImageUtils as iu
+#import Misc.ImageUtils as iu
 import random
 from skimage import data, exposure, img_as_float
 # import matplotlib.pyplot as plt
@@ -36,12 +38,12 @@ import shutil
 from StringIO import StringIO
 import string
 from termcolor import colored, cprint
-from random import randrange
 import math as m
 from tqdm import tqdm
 from Misc.TFSpatialTransformer import *
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
+# tf.disable_v2_behavior()
+# from tensorflow.keras.optimizers import SGD
 
 
 # Don't generate pyc codes
@@ -100,7 +102,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
     else:
         print("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
         StackedBatch = []
-        IABatch =[]
+        PABatch =[]
         CABatch =[]
         PBBatch =[]
 
@@ -118,7 +120,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
             img = cv2.imread(RandImageName)
             img = cv2.resize(img, (240,320))
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-            gray=(gray-np.mean(gray))/(np.std(gray) + 10**(-7))
+            gray=(gray-np.mean(gray))/255
         
 
             x = randrange(42,gray.shape[1]-42-128)
@@ -129,7 +131,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
             corners_A.append([y,x+128])
             
             patch_A = gray[y:y+128,x:x+128]
-            A_normal=(patch_A-np.mean(patch_A))/(np.std(patch_A) + 10**(-7))
+            A_normal=(patch_A-np.mean(patch_A))/255
             
             corners_B = []
             for j in corners_A:
@@ -138,20 +140,21 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize
                 corners_B.append([j[0]+new_x, j[1]+new_y])
         
 
-            t = cv2.getPerspectiveTransform(np.float32(corners_B), np.float32(corners_A))
-            warpped_img = cv2.warpPerspective(gray, t, (gray.shape[1], gray.shape[0]))
+            t = cv2.getPerspectiveTransform(np.float32(corners_A), np.float32(corners_B))
+            t_inv= np.linalg.inv(t)  
+            warpped_img = cv2.warpPerspective(gray, t_inv, (gray.shape[1], gray.shape[0]))
             
             patch_B = warpped_img[corners_A[0][0]:corners_A[2][0], corners_A[0][1]:corners_A[2][1]]
-            B_normal=(patch_B-np.mean(patch_B))/(np.std(patch_B) + 10**(-7))
+            B_normal=(patch_B-np.mean(patch_B))/255
 
             stacked_img = np.dstack((A_normal, B_normal))
 
             StackedBatch.append(stacked_img)
-            IABatch.append(np.float32(gray.reshape(320,240,1)))
+            PABatch.append(np.float32(A_normal.reshape(128,128,1)))
             CABatch.append(np.float32(corners_A))
             PBBatch.append(np.float32(B_normal.reshape(128,128,1)))
 
-        return StackedBatch, IABatch, CABatch, PBBatch
+        return StackedBatch, PABatch, CABatch, PBBatch
 
 def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile):
     """
@@ -165,7 +168,7 @@ def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile)
         print('Loading latest checkpoint with the name ' + LatestFile)              
 
     
-def TrainOperation(ImgPH, LabelPH,IAfullPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
+def TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
                    NumEpochs, MiniBatchSize, SaveCheckPoint, CheckPointPath,
                    DivTrain, LatestFile, BasePath, LogsPath, ModelType):
     """
@@ -193,27 +196,54 @@ def TrainOperation(ImgPH, LabelPH,IAfullPH,CornerAPH, PatchBPH, DirNamesTrain, T
 
     if ModelType == 'Sup':
         print("Supervised")
-        prLogits = SupervisedModel(ImgPH, ImageSize, MiniBatchSize)
+        prLogits, kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias = SupervisedModel(ImgPH, ImageSize, MiniBatchSize)
 
         with tf.name_scope('Loss'):
             loss = tf.sqrt(tf.reduce_sum((tf.squared_difference(prLogits,LabelPH))))
 
         with tf.name_scope('Adam'):
-            Optimizer = tf.train.AdamOptimizer(learning_rate=0.0005,beta1=0.9,beta2=0.999,epsilon=1e-08).minimize(loss)
+            global_step = tf.Variable(0, trainable=False)
+            starter_learning_rate = 0.005
+            learning_rate = tf.train.exponential_decay(starter_learning_rate,global_step, 300, 0.7, staircase=True)
+
+            Optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+            grad = Optimizer.compute_gradients(loss)
+            Optimizer = Optimizer.minimize(loss, global_step=global_step)
 
     else:
         print("Unsupervised")
-        pred_PB,PB = UnsupervisedModel(ImgPH,IAfullPH,CornerAPH, PatchBPH,ImageSize, MiniBatchSize)
+        pred_PB,PB,kernel_c1, kernel_c2, kernel_c3, kernel_c4, kernel_f1, kernel_f2, bias = UnsupervisedModel(ImgPH,PatchAPH,CornerAPH, PatchBPH,ImageSize, MiniBatchSize)
 
         with tf.name_scope('Loss'):
             loss = tf.reduce_mean(tf.abs(pred_PB - PB))
 
 
         with tf.name_scope('Adam'):
-            Optimizer = tf.train.AdamOptimizer(learning_rate=0.0001,beta1=0.9,beta2=0.999,epsilon=1e-08).minimize(loss)
+            global_step = tf.Variable(0, trainable=False)
+            starter_learning_rate = 0.001
+            learning_rate = tf.train.exponential_decay(starter_learning_rate,global_step, 300, 0.7, staircase=True)
+            # Optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+            Optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=0.9,beta2=0.999,epsilon=1e-08)
+            grad = Optimizer.compute_gradients(loss)
+            Optimizer = Optimizer.minimize(loss, global_step=global_step)
+
+            
 
     # Tensorboard
     # Create a summary to monitor loss tensor
+    tf.summary.scalar('learning_rate', learning_rate)
+    # tf.summary.scalar('LossEveryIter', loss)
+    tf.summary.histogram('kernel_c1',kernel_c1)
+    tf.summary.histogram('kernel_c2',kernel_c2) 
+    tf.summary.histogram('kernel_c3',kernel_c3)
+    tf.summary.histogram('kernel_c4',kernel_c4) 
+    tf.summary.histogram('kernel_f1',kernel_f1)
+    tf.summary.histogram('kernel_f2',kernel_f2)
+
+    for gradient, variable in grad:
+        tf.summary.histogram("gradients/" + variable.name, tf.norm(gradient))
+        tf.summary.histogram("variables/" + variable.name, tf.norm(variable))
+
     EpochLossPH = tf.placeholder(tf.float32, shape=None)
     loss_summary = tf.summary.scalar('LossEveryIter', loss)
     epoch_loss_summary = tf.summary.scalar('LossPerEpoch', EpochLossPH)
@@ -243,41 +273,58 @@ def TrainOperation(ImgPH, LabelPH,IAfullPH,CornerAPH, PatchBPH, DirNamesTrain, T
             
         for Epochs in tqdm(range(StartEpoch, NumEpochs)):
             NumIterationsPerEpoch = int(NumTrainSamples/MiniBatchSize/DivTrain)
-            Loss=[]
-            epoch_loss=0
+            appendLoss=[]
+            # epoch_loss=0
             for PerEpochCounter in tqdm(range(NumIterationsPerEpoch)):
                 if ModelType == "Sup":
                     ImgBatch,LabelBatch = GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize,ModelType)
                     FeedDict = {ImgPH: ImgBatch, LabelPH: LabelBatch}
                     
                 else:
-                    StackedBatch, IABatch, CABatch, PBBatch = GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize,ModelType)
-                    FeedDict = {ImgPH: StackedBatch, IAfullPH:IABatch ,CornerAPH: CABatch, PatchBPH: PBBatch}
+                    StackedBatch, PABatch, CABatch, PBBatch = GenerateBatch(BasePath, DirNamesTrain, TrainLabels, ImageSize, MiniBatchSize,ModelType)
+                    FeedDict = {ImgPH: StackedBatch, PatchAPH:PABatch ,CornerAPH: CABatch, PatchBPH: PBBatch}
                     
                 _, LossThisBatch, Summary = sess.run([Optimizer, loss, MergedSummaryOP1], feed_dict=FeedDict)
-                Loss.append(LossThisBatch)
-                epoch_loss = epoch_loss + LossThisBatch
-                # Save checkpoint every some SaveCheckPoint's iterations
-                if PerEpochCounter % SaveCheckPoint == 0:
-                    # Save the Model learnt in this epoch
-                    SaveName =  CheckPointPath + str(Epochs) + 'a' + str(PerEpochCounter) + 'model.ckpt'
-                    Saver.save(sess,  save_path=SaveName)
-                    print('\n' + SaveName + ' Model Saved...')
+                # Loss.append(LossThisBatch)
+                # epoch_loss = epoch_loss + LossThisBatch
+                # # Save checkpoint every some SaveCheckPoint's iterations
+                # if PerEpochCounter % SaveCheckPoint == 0:
+                #     # Save the Model learnt in this epoch
+                #     SaveName =  CheckPointPath + str(Epochs) + 'a' + str(PerEpochCounter) + 'model.ckpt'
+                #     Saver.save(sess,  save_path=SaveName)
+                #     print('\n' + SaveName + ' Model Saved...')
 
                 # Tensorboard
+                appendLoss.append(LossThisBatch)
                 Writer.add_summary(Summary, Epochs*NumIterationsPerEpoch + PerEpochCounter)
-              
+                # If you don't flush the tensorboard doesn't update until a lot of iterations!
+                Writer.flush()
 
-            epoch_loss = epoch_loss/NumIterationsPerEpoch
+            # epoch_loss = epoch_loss/NumIterationsPerEpoch
             
-            print(np.mean(Loss))
+            # print(np.mean(Loss))
             # Save model every epoch
+            # SaveName = CheckPointPath + str(Epochs) + 'model.ckpt'
+            # Saver.save(sess, save_path=SaveName)
+            # print('\n' + SaveName + ' Model Saved...')
+            # Summary_epoch = sess.run(MergedSummaryOP2,feed_dict={EpochLossPH: epoch_loss})
+            # Writer.add_summary(Summary_epoch,Epochs)
+            # Writer.flush()
             SaveName = CheckPointPath + str(Epochs) + 'model.ckpt'
             Saver.save(sess, save_path=SaveName)
             print('\n' + SaveName + ' Model Saved...')
-            Summary_epoch = sess.run(MergedSummaryOP2,feed_dict={EpochLossPH: epoch_loss})
-            Writer.add_summary(Summary_epoch,Epochs)
-            Writer.flush()
+            print("Loss: ", np.mean(appendLoss))
+            LossOverEpochs=np.vstack((LossOverEpochs,[Epochs,np.mean(appendLoss)]))
+            tf.summary.scalar('LossOverEpochs', np.mean(appendLoss))
+            plt.xlim(0,50)
+            plt.xlabel('Epoch')
+            plt.ylabel('Loss')
+            plt.plot(LossOverEpochs[:,0],LossOverEpochs[:,1])
+            if not os.path.exists('Graphs/Unsup/train/'):
+                os.makedirs('Graphs/Unsup/train/')
+            plt.savefig('Graphs/Unsup/train/lossEpochs'+str(Epochs)+'.png')
+            # plt.show()
+            plt.close()
             
 
 def main():
@@ -294,7 +341,7 @@ def main():
     Parser.add_argument('--CheckPointPath', default='../Checkpoints/Unsup/', help='Path to save Checkpoints, Default: ../Checkpoints/')
     Parser.add_argument('--NumEpochs', type=int, default=50, help='Number of Epochs to Train for, Default:50')
     Parser.add_argument('--DivTrain', type=int, default=1, help='Factor to reduce Train data by per epoch, Default:1')
-    Parser.add_argument('--MiniBatchSize', type=int, default=128, help='Size of the MiniBatch to use, Default:1')
+    Parser.add_argument('--MiniBatchSize', type=int, default=64, help='Size of the MiniBatch to use, Default:1')
     Parser.add_argument('--LoadCheckPoint', type=int, default=0, help='Load Model from latest Checkpoint from CheckPointsPath?, Default:0')
     Parser.add_argument('--LogsPath', default='Logs/Unsup/', help='Path to save Logs for Tensorboard, Default=Logs/')
 
@@ -307,7 +354,7 @@ def main():
     CheckPointPath = Args.CheckPointPath
     LogsPath = Args.LogsPath
     ModelType = Args.ModelType
-    print(ModelType)
+    # print(ModelType)
 
     # Setup all needed parameters including file reading
     DirNamesTrain, SaveCheckPoint, ImageSize, NumTrainSamples, TrainLabels, NumClasses = SetupAll(BasePath, CheckPointPath)
@@ -326,12 +373,12 @@ def main():
     # Define PlaceHolder variables for Input and Predicted output
     ImgPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, ImageSize[0], ImageSize[1], ImageSize[2]))
     LabelPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, NumClasses)) # OneHOT labels
-    IAfullPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 320,240,1))
+    PatchAPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 128,128,1))
     CornerAPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 4,2))
     PatchBPH = tf.placeholder(tf.float32, shape=(MiniBatchSize, 128, 128,1))
     
     
-    TrainOperation(ImgPH, LabelPH,IAfullPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
+    TrainOperation(ImgPH, LabelPH,PatchAPH,CornerAPH, PatchBPH, DirNamesTrain, TrainLabels, NumTrainSamples, ImageSize,
                    NumEpochs, MiniBatchSize, SaveCheckPoint, CheckPointPath,
                    DivTrain, LatestFile, BasePath, LogsPath, ModelType)
         
