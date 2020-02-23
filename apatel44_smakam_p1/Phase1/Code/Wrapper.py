@@ -17,6 +17,7 @@ University of Maryland, College Park
 
 # Code starts here:
 
+import os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
@@ -342,268 +343,316 @@ def main():
 	Read a set of images for Panorama stitching
 	"""
 
-	img1  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Code/Images/output.jpg")
-	# img1  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Data/Train/Set2/1.jpg")
-	# img2  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Data/Train/Set2/2.jpg")
-	img2  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Data/Train/Set2/3.jpg")
+	current_dir = os.path.dirname(os.path.abspath(__file__))
+	temp_path, dir_name = os.path.split(current_dir)
+	image_dir = os.path.join(temp_path, "Data/Train/Set3")
 
-	# print(cv2.GetSize(img1))
+	images = []
+	image_names = []
 
-	gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-	gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
-	# gray3 = cv2.cvtColor(img3, cv2.COLOR_RGB2GRAY)
+	# sorted(os.listdir(whatever_directory))
 
-	print(gray1.dtype)
+	for name in sorted(os.listdir(image_dir)):
+		print(name)
+		im = cv2.imread(os.path.join(image_dir, name));
+		if im is not None:
+			images.append(im)
+			image_names.append(name)
+		else:
+			print("None")
 
-	"""
-	Corner Detection
-	Save Corner detection output as corners.png
-	"""
+	#percent by which the image is resized
+	scale_percent = (float(300)/images[0].shape[0])*100
+	print("scale_percent: ", scale_percent)
 
-	# dst = cv2.cornerHarris(gray1, 2, 3, 0.04)
+	images_resized = []
 
-	img1_copy = copy.deepcopy(img1)
-	img2_copy = copy.deepcopy(img2)
-	# img3_copy = copy.deepcopy(img3)
+	for im in images:
+		#calculate the 50 percent of original dimensions
+		width = int(im.shape[1] * scale_percent / 100)
+		height = int(im.shape[0] * scale_percent / 100)
 
-	corners1 = getCorners(gray1, img1_copy, 100, str(1))
-	corners2 = getCorners(gray2, img2_copy, 100, str(2))
-	# corners3 = getCorners(gray3, img3_copy, 3, str(3))
+		# dsize
+		dsize = (width, height)
 
-	"""
-	Perform ANMS: Adaptive Non-Maximal Suppression
-	Save ANMS output as anms.png
-	"""
+		# resize image
+		im = cv2.resize(im, dsize)
+		images_resized.append(im)
 
-	img1_copy = copy.deepcopy(img1)
-	img2_copy = copy.deepcopy(img2)
-	# img3_copy = copy.deepcopy(img3)
 
-	N_best1 = anms(gray1, img1_copy, corners1, 50, str(1))
-	N_best2 = anms(gray2, img2_copy, corners2, 50, str(2))
-	# N_best3 = anms(gray3, img3_copy, corners3, 2, str(3)
+	print(image_names)
 
+	flag = True
 
-	"""
-	Feature Descriptors
-	Save Feature Descriptor output as FD.png
-	"""
+	for i in range(1, len(images_resized)):
 
-	img1_copy = copy.deepcopy(img1)
-	img2_copy = copy.deepcopy(img2)
-	# img3_copy = copy.deepcopy(img3)
+		# img1  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Code/Images/output.jpg")
+		# img2  = cv2.imread("/home/akanksha/Documents/CMSC733/apatel44_smakam_p1/Phase1/Data/Train/Set2/3.jpg")
 
-	descs1 = getDescriptors(gray1, img1_copy, N_best1, str(1))
-	descs2 = getDescriptors(gray2, img2_copy, N_best2, str(2))
-	# descs3 = getDescriptors(gray3, img3_copy, N_best3, str(3))
+		if (flag == True):
+			img1 = images_resized[i-1]
+			img2 = images_resized[i]
+			flag = False
 
-	# # # """
-	# # # Feature Matching
-	# # # Save Feature Matching output as matching.png
-	# # # """
+		else:
+			img1 = output
+			img2 = images_resized[i]
 
-	# matched = match_features(descs1, descs2)
-	img1_copy = copy.deepcopy(img1)
-	img2_copy = copy.deepcopy(img2)
-	# img3_copy = copy.deepcopy(img3)
-	matched1 = featureMatching(descs1, descs2, 0.5)
-	# print(matched)
+		gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+		gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+		# gray3 = cv2.cvtColor(img3, cv2.COLOR_RGB2GRAY)
 
-	keypoints1 = []
-	keypoints2 = []
-	for n1 in N_best1: 
-		keypoints1.append(cv2.KeyPoint(n1[0], n1[1], 5))
+		print(gray1.dtype)
 
-	for n2 in N_best2:
-		keypoints2.append(cv2.KeyPoint(n2[0], n2[1], 5))
+		"""
+		Corner Detection
+		Save Corner detection output as corners.png
+		"""
 
+		# dst = cv2.cornerHarris(gray1, 2, 3, 0.04)
 
-	matchedImg = plotMatches(img1_copy, img2_copy, keypoints1, keypoints2, matched1, "FeatureMatching")
+		img1_copy = copy.deepcopy(img1)
+		img2_copy = copy.deepcopy(img2)
+		# img3_copy = copy.deepcopy(img3)
 
+		corners1 = getCorners(gray1, img1_copy, 100, str(i) + '.' + str(1))
+		corners2 = getCorners(gray2, img2_copy, 100, str(i) + '.' + str(2))
+		# corners3 = getCorners(gray3, img3_copy, 3, str(3))
 
-	# matches_keypoints = []
-	# for match in matches:
-	# 	matches_keypoints.append()
-	
+		"""
+		Perform ANMS: Adaptive Non-Maximal Suppression
+		Save ANMS output as anms.png
+		"""
 
-	
+		img1_copy = copy.deepcopy(img1)
+		img2_copy = copy.deepcopy(img2)
+		# img3_copy = copy.deepcopy(img3)
 
-	# print(len(matched))
+		N_best1 = anms(gray1, img1_copy, corners1, 50, str(i) + '.' + str(1))
+		N_best2 = anms(gray2, img2_copy, corners2, 50, str(i) + '.' + str(2))
+		# N_best3 = anms(gray3, img3_copy, corners3, 2, str(3)
 
-	# # """
-	# # Refine: RANSAC, Estimate Homography
-	# # """
 
-	img1_copy = copy.deepcopy(img1)
-	img2_copy = copy.deepcopy(img2)
-	# img3_copy = copy.deepcopy(img3)
+		"""
+		Feature Descriptors
+		Save Feature Descriptor output as FD.png
+		"""
 
-	matched2, inliers1, inliers2 = RANSAC(img1_copy, img2_copy, matched1, N_best1, N_best2, 10, 500)
+		img1_copy = copy.deepcopy(img1)
+		img2_copy = copy.deepcopy(img2)
+		# img3_copy = copy.deepcopy(img3)
 
-	matchedImg = plotMatches(img1_copy, img2_copy, keypoints1, keypoints2, matched2, "RANSAC")
+		descs1 = getDescriptors(gray1, img1_copy, N_best1, str(i) + '.' + str(1))
+		descs2 = getDescriptors(gray2, img2_copy, N_best2, str(i) + '.' + str(2))
+		# descs3 = getDescriptors(gray3, img3_copy, N_best3, str(3))
 
-	H = computeHomography(inliers1, inliers2)
+		# # # """
+		# # # Feature Matching
+		# # # Save Feature Matching output as matching.png
+		# # # """
 
-	# print(H)
+		# matched = match_features(descs1, descs2)
+		img1_copy = copy.deepcopy(img1)
+		img2_copy = copy.deepcopy(img2)
+		# img3_copy = copy.deepcopy(img3)
+		matched1 = featureMatching(descs1, descs2, 0.5)
+		# print(matched)
 
-	# H_ = H/H[2][2]
+		keypoints1 = []
+		keypoints2 = []
+		for n1 in N_best1: 
+			keypoints1.append(cv2.KeyPoint(n1[0], n1[1], 5))
 
-	# print(H_)
+		for n2 in N_best2:
+			keypoints2.append(cv2.KeyPoint(n2[0], n2[1], 5))
 
-	r, c = gray1.shape
-	img_cor = [[0, c-1, 0, c-1],
-			   [0, 0, r-1, r-1], 
-			   [1, 1, 1, 1]]
 
-	proj_cor = np.matmul(H, img_cor)
+		matchedImg = plotMatches(img1_copy, img2_copy, keypoints1, keypoints2, matched1, "FeatureMatching" + str(i))
 
-	for j in range(4):
-		proj_cor[:,j] = proj_cor[:,j]/proj_cor[2][j]
 
-	print(proj_cor)
+		# matches_keypoints = []
+		# for match in matches:
+		# 	matches_keypoints.append()
+		
 
-	x_min = min(proj_cor[0,:])
-	y_min = min(proj_cor[1,:])
-	x_max = max(proj_cor[0,:])
-	y_max = max(proj_cor[1,:])
+		
 
-	I_mat = [[1, 0, -x_min],
-			 [0, 1, -y_min],
-			 [0, 0, 1]]
+		# print(len(matched))
 
-	print(x_min)
-	print(y_min)
+		# # """
+		# # Refine: RANSAC, Estimate Homography
+		# # """
 
-	H_new = np.matmul(I_mat, H)
+		img1_copy = copy.deepcopy(img1)
+		img2_copy = copy.deepcopy(img2)
+		# img3_copy = copy.deepcopy(img3)
 
-	# img_pad = np.pad(gray1, ((y_trans, 0),(x_trans, 0)), mode = 'constant', constant_values = (0, 0))
-	# print(img_pad.shape)
+		matched2, inliers1, inliers2 = RANSAC(img1_copy, img2_copy, matched1, N_best1, N_best2, 10, 250)
 
-	# cv2.imshow('dst',img_pad)
-	# if cv2.waitKey(0) & 0xff == 27:
-	#     cv2.destroyAllWindows()
+		matchedImg = plotMatches(img1_copy, img2_copy, keypoints1, keypoints2, matched2, "RANSAC" + str(i))
 
-	warp_img = cv2.warpPerspective(img1_copy, H_new, (int(x_max - x_min), int(y_max-y_min)))
+		H = computeHomography(inliers1, inliers2)
 
-	cv2.imshow('dst',warp_img)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		# print(H)
 
+		# H_ = H/H[2][2]
 
-	# dmatchvec = []
-	# for m in matched:
-	# 	dmatchvec.append(cv2.DMatch(m[0], m[1], 1))
+		# print(H_)
 
-	# matchesImg1 = cv2.drawMatches(img1_copy, keypoints1, img2_copy, keypoints2, dmatchvec, matchesImg)
+		r, c = gray1.shape
+		img_cor = [[0, c-1, 0, c-1],
+				   [0, 0, r-1, r-1], 
+				   [1, 1, 1, 1]]
 
-	# cv2.imshow('dst',matchesImg1)
-	# if cv2.waitKey(0) & 0xff == 27:
-	#     cv2.destroyAllWindows()
+		proj_cor = np.matmul(H, img_cor)
 
+		for j in range(4):
+			proj_cor[:,j] = proj_cor[:,j]/proj_cor[2][j]
 
-	"""
-	Image Warping + Blending
-	Save Panorama output as mypano.png
-	"""
+		print(proj_cor)
 
-	# print(inliers1)
-	pt1 = inliers1[0]
-	pt2 = inliers2[0]
+		x_min = min(proj_cor[0,:])
+		y_min = min(proj_cor[1,:])
+		x_max = max(proj_cor[0,:])
+		y_max = max(proj_cor[1,:])
 
-	cv2.circle(img1, pt1, 3, 255, -1)
-	cv2.circle(img2, pt2, 3, 255, -1)
+		I_mat = [[1, 0, -x_min],
+				 [0, 1, -y_min],
+				 [0, 0, 1]]
 
-	cv2.imshow('dst',img1)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		print(x_min)
+		print(y_min)
 
-	cv2.imshow('dst',img2)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		H_new = np.matmul(I_mat, H)
 
-	# print(pt1)
-	print(pt2)
+		# img_pad = np.pad(gray1, ((y_trans, 0),(x_trans, 0)), mode = 'constant', constant_values = (0, 0))
+		# print(img_pad.shape)
 
-	pt1_ = getProjection(H_new, pt1)
-	N_best1_ = []
-	for i in N_best1:
-		pt11_ = getProjection(H_new, i)
-		N_best1_.append((int(pt11_[0]), int(pt11_[1])))
+		# cv2.imshow('dst',img_pad)
+		# if cv2.waitKey(0) & 0xff == 27:
+		#     cv2.destroyAllWindows()
 
-	keypoints11 = []
-	for n2 in N_best1_:
-		keypoints11.append(cv2.KeyPoint(n2[0], n2[1], 5))
+		warp_img = cv2.warpPerspective(img1_copy, H_new, (int(x_max - x_min), int(y_max-y_min)))
 
-	matchedImg = plotMatches(warp_img, img2_copy, keypoints11, keypoints2, matched2, "RANDOM")
+		cv2.imshow('dst',warp_img)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
 
-	print("aaaaaaaaaaa")
-	print(pt1_)
 
-	cv2.circle(warp_img, (int(pt1_[0]), int(pt1_[1])), 3, 255, -1)
+		# dmatchvec = []
+		# for m in matched:
+		# 	dmatchvec.append(cv2.DMatch(m[0], m[1], 1))
 
-	cv2.imshow('dst',warp_img)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		# matchesImg1 = cv2.drawMatches(img1_copy, keypoints1, img2_copy, keypoints2, dmatchvec, matchesImg)
 
-	r, c, _ = img2_copy.shape
-	r_new, c_new, _ = warp_img.shape
+		# cv2.imshow('dst',matchesImg1)
+		# if cv2.waitKey(0) & 0xff == 27:
+		#     cv2.destroyAllWindows()
 
-	xl, xr, yu, yb = getPadding(warp_img, img1_copy, pt2, pt1_)
 
-	output = np.pad(warp_img, ((max(0,yu),abs(min(0,yb))),(max(0,xl),abs(min(0,xr))),(0,0)), mode = 'constant', constant_values = 0)
-	print("Image size: ")
-	print(warp_img.shape)
-	print(output.shape)
+		"""
+		Image Warping + Blending
+		Save Panorama output as mypano.png
+		"""
 
-	cv2.imshow('dst',output)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		# print(inliers1)
+		pt1 = inliers1[0]
+		pt2 = inliers2[0]
 
-	print("upper start point: " + str(abs(min(yu,0))))
-	print("lower end point: " + str(abs(min(yu,0))+r))
+		cv2.circle(img1, pt1, 3, 255, -1)
+		cv2.circle(img2, pt2, 3, 255, -1)
 
-	output[abs(min(yu,0)):abs(min(yu,0))+r, abs(min(xl,0)):abs(min(xl,0))+c] = img2
+		cv2.imshow('dst',img1)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
 
-	cv2.imwrite('Images/output.jpg', output)
+		cv2.imshow('dst',img2)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
 
-	cv2.imshow('dst',output)
-	if cv2.waitKey(0) & 0xff == 27:
-	    cv2.destroyAllWindows()
+		# print(pt1)
+		print(pt2)
 
-	# print(r, c)
-	# print(r_new, c_new)
+		pt1_ = getProjection(H_new, pt1)
+		N_best1_ = []
+		for i in N_best1:
+			pt11_ = getProjection(H_new, i)
+			N_best1_.append((int(pt11_[0]), int(pt11_[1])))
 
-	# # print(pt1_)
-	# # print(pt2)
+		keypoints11 = []
+		for n2 in N_best1_:
+			keypoints11.append(cv2.KeyPoint(n2[0], n2[1], 5))
 
-	# xt1 = int(round(pt1_[0] - pt2[0]))
-	# yt1 = int(round(pt1_[1] - pt2[1]))
+		matchedImg = plotMatches(warp_img, img2_copy, keypoints11, keypoints2, matched2, "RANDOM")
 
-	# print("xt1: " + str(xt1))
-	# print("yt1: " + str(yt1))
+		print("aaaaaaaaaaa")
+		print(pt1_)
 
-	# xt = c + xt1 - c_new
-	# yt = r + yt1 - r_new
+		cv2.circle(warp_img, (int(pt1_[0]), int(pt1_[1])), 3, 255, -1)
 
-	# print("Why?????????????")
-	# print(xt)
-	# print(yt)
+		cv2.imshow('dst',warp_img)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
 
-	# output = np.pad(warp_img, ((0,yt),(0,0),(0,0)), mode = 'constant', constant_values = 0)
-	# print(warp_img.shape)
-	# print(output.shape)
+		r, c, _ = img2_copy.shape
+		r_new, c_new, _ = warp_img.shape
 
-	# cv2.imshow('dst',output)
-	# if cv2.waitKey(0) & 0xff == 27:
-	#     cv2.destroyAllWindows()
+		xl, xr, yu, yb = getPadding(warp_img, img2_copy, pt2, pt1_)
 
-	# output[yt1:output.shape[0], xt1:c+xt1] = img2
+		output = np.pad(warp_img, ((max(0,yu),abs(min(0,yb))),(max(0,xl),abs(min(0,xr))),(0,0)), mode = 'constant', constant_values = 0)
+		print("Image size: ")
+		print(warp_img.shape)
+		print(output.shape)
 
-	# cv2.imwrite('Images/output2.jpg', output)
+		cv2.imshow('dst',output)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
 
-	# cv2.imshow('dst',output)
-	# if cv2.waitKey(0) & 0xff == 27:
-	#     cv2.destroyAllWindows()
+		print("upper start point: " + str(abs(min(yu,0))))
+		print("lower end point: " + str(abs(min(yu,0))+r))
+
+		output[abs(min(yu,0)):abs(min(yu,0))+r, abs(min(xl,0)):abs(min(xl,0))+c] = img2
+
+		cv2.imwrite('Images/output' + str(i) + '.jpg', output)
+
+		cv2.imshow('dst',output)
+		if cv2.waitKey(0) & 0xff == 27:
+		    cv2.destroyAllWindows()
+
+		# print(r, c)
+		# print(r_new, c_new)
+
+		# # print(pt1_)
+		# # print(pt2)
+
+		# xt1 = int(round(pt1_[0] - pt2[0]))
+		# yt1 = int(round(pt1_[1] - pt2[1]))
+
+		# print("xt1: " + str(xt1))
+		# print("yt1: " + str(yt1))
+
+		# xt = c + xt1 - c_new
+		# yt = r + yt1 - r_new
+
+		# print("Why?????????????")
+		# print(xt)
+		# print(yt)
+
+		# output = np.pad(warp_img, ((0,yt),(0,0),(0,0)), mode = 'constant', constant_values = 0)
+		# print(warp_img.shape)
+		# print(output.shape)
+
+		# cv2.imshow('dst',output)
+		# if cv2.waitKey(0) & 0xff == 27:
+		#     cv2.destroyAllWindows()
+
+		# output[yt1:output.shape[0], xt1:c+xt1] = img2
+
+		# cv2.imwrite('Images/output2.jpg', output)
+
+		# cv2.imshow('dst',output)
+		# if cv2.waitKey(0) & 0xff == 27:
+		#     cv2.destroyAllWindows()
 
 
 
