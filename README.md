@@ -1,18 +1,14 @@
-## Author
-
-Akanksha Patel
-Sri Manika Makam
-
+# MyAutoPano
+This project aimed at stitching two or more images in order to create one seamless panorama image. This task requires homography estimation between two images. We calculate the homography between two images using the classical vision approach and deep learning approach (both supervised and unsupervised). 
 
 ## Phase 1
 
-In phase 1, we implement the creation of a seamless panorama using tradiitonal geometric vision approach. Outputs are shown in the report for Train, Validation and Test sets.
+In phase 1, we implement the creation of a seamless panorama using tradiitonal geometric vision approach.
 
-Run the following command:
+To run the code, run the following command from Phase1 folder:
 
 ```
 python Wrapper.py
-
 ```
 
 ## Phase 2
@@ -51,5 +47,17 @@ To compare the estimated homographies with ground truth, run the following comma
 pyhton Wrapper.py
 ```
 
-The ouputs are shown in the report.
+## Results
 
+<p align="center">
+	<img src="https://github.com/p-akanksha/CMSC733/blob/master/Results/output1.jpg" width="400">
+</p>
+
+<p align="center">
+	<img src="https://github.com/p-akanksha/CMSC733/blob/master/Results/output2.jpg" width="600">
+</p>
+
+## Author
+
+1. Akanksha Patel
+2. Sri Manika Makam
